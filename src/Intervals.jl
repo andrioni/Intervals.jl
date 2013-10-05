@@ -1,3 +1,23 @@
+# This file is part of Intervals.jl.
+#
+# Intervals.jl is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# Intervals.jl is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with Intervals.jl; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+# Also add information on how to contact you by electronic and paper mail.
+#
+# Copyright (C) 2013 Alessandro Andrioni
+
+
 module Intervals
 
 export
@@ -18,7 +38,7 @@ import
         square, exp, exp2, expm1, cosh, sinh, tanh, sech, csch, coth, inv,
         sqrt, cbrt, abs, log, log2, log10, log1p, sin, cos, tan, sec,
         csc, acos, asin, atan, acosh, asinh, atanh, isempty, union,
-        intersect, in, cmp
+        intersect, in, cmp, inv
 
 typealias IntervalTypes Union(Float32, Float64, BigFloat)
 typealias SmallFloat Union(Float32, Float64)
@@ -105,6 +125,50 @@ function -(x::Interval, y::Interval)
     r = roundop(-, RoundUp, x.right, y.left)
     Interval(l, r)
 end
+function *(x::Interval, y::Interval)
+    if x.left >= 0
+        if y.left >= 0
+            l = roundop(*, RoundDown, x.left, y.left)
+            r = roundop(*, RoundUp, x.right, y.right)
+        elseif y.right <= 0
+            l = roundop(*, RoundDown, x.right, y.left)
+            r = roundop(*, RoundUp, x.left, y.right)
+        else
+            l = roundop(*, RoundDown, x.right, y.left)
+            r = roundop(*, RoundUp, x.right, y.right)
+        end
+    elseif x.right <= 0
+        if y.left >= 0
+            l = roundop(*, RoundDown, x.left, y.right)
+            r = roundop(*, RoundUp, x.right, y.left)
+        elseif y.right <= 0
+            l = roundop(*, RoundDown, x.right, y.right)
+            r = roundop(*, RoundUp, x.left, y.left)
+        else
+            l = roundop(*, RoundDown, x.left, y.right)
+            r = roundop(*, RoundUp, x.left, y.left)
+        end
+    else
+        if y.left >= 0
+            l = roundop(*, RoundDown, x.left, y.right)
+            r = roundop(*, RoundUp, x.right, y.right)
+        elseif y.right <= 0
+            l = roundop(*, RoundDown, x.right, y.left)
+            r = roundop(*, RoundUp, x.left, y.left)
+        else
+            l = min(roundop(*, RoundDown, x.left, y.right),
+                    roundop(*, RoundDown, x.right, y.left))
+            r = max(roundop(*, RoundUp, x.left, y.left),
+                    roundop(*, RoundUp, x.right, y.right))
+        end
+    end
+    Interval(l, r)
+end
+# TODO: Reimplement directly without using inv
+function /(x::Interval, y::Interval)
+    i = inv(y)
+    x * i
+end
 
 # General functions
 function mid(x::Interval)
@@ -114,6 +178,19 @@ function mid(x::Interval)
     else
         return m / 2
     end
+end
+
+function inv{T<:SmallFloat}(x::Interval{T})
+    l = roundop(/, RoundDown, 1., x.right)
+    r = roundop(/, RoundUp, 1., x.left)
+    Interval(l, r)
+end
+# TODO: Call MPFR inv directly/write without roundop
+function inv(x::Interval{BigFloat})
+    i = BigFloat(1)
+    l = roundop(/, RoundDown, i, x.right)
+    r = roundop(/, RoundUp, i, x.left)
+    Interval(l, r)
 end
 
 # Printing-related functions
@@ -154,6 +231,7 @@ function parsedown(::Type{BigFloat}, x::String)
         BigFloat(x)
     end
 end
+# TODO: Use macros instead?
 function roundop(f, r, x::SmallFloat, y::SmallFloat)
     with_rounding(r) do
         f(x, y)
